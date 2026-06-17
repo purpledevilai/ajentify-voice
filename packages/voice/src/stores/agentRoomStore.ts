@@ -28,6 +28,8 @@ export interface AgentRoomState {
   _roomConnection?: RoomConnection;
   _rpc?: JSONRPCPeer;
   _agentPeerId?: string;
+  /** Hidden <audio> element the package uses to actually play agent audio. */
+  _agentAudioElement?: HTMLAudioElement;
 
   // ---- Lifecycle actions
 
@@ -131,6 +133,45 @@ export function createAgentRoomStore(
     if (!response.ok) {
       throw new Error(`Failed to invite agent: ${response.status} ${response.statusText}`);
     }
+  };
+
+  /**
+   * Mount the agent's inbound MediaStream onto a hidden `<audio>` element
+   * appended to `document.body` so the user actually hears the agent.
+   * Idempotent: if an element already exists we just re-point `srcObject`.
+   */
+  const attachAgentAudioElement = (stream: MediaStream) => {
+    if (typeof document === 'undefined') return;
+    let el = store.getState()._agentAudioElement;
+    if (!el) {
+      el = document.createElement('audio');
+      el.autoplay = true;
+      el.setAttribute('playsinline', 'true');
+      el.style.display = 'none';
+      el.setAttribute('data-ajentify-voice', 'agent-audio');
+      document.body.appendChild(el);
+      store.setState({ _agentAudioElement: el });
+    }
+    el.srcObject = stream;
+    void el.play().catch((err) => {
+      // Browser autoplay policy can reject this if the call wasn't
+      // started in response to a user gesture. The exposed
+      // `agentMediaStream` lets consumers retry from their own gesture.
+      console.warn('[agentRoomStore] agent audio play() rejected:', err);
+    });
+  };
+
+  const detachAgentAudioElement = () => {
+    const el = store.getState()._agentAudioElement;
+    if (!el) return;
+    try {
+      el.pause();
+      el.srcObject = null;
+      el.remove();
+    } catch (e) {
+      console.warn('[agentRoomStore] error tearing down agent audio element', e);
+    }
+    store.setState({ _agentAudioElement: undefined });
   };
 
   store = createStore<AgentRoomState>((set, get) => ({
@@ -241,9 +282,13 @@ export function createAgentRoomStore(
 
         const peer = new PeerConnection(peerId, selfDescription, outbound, isInitiator);
 
-        // When agent audio arrives, expose it on the store.
+        // When agent audio arrives, expose it on the store AND wire it
+        // into a hidden <audio> element so the user actually hears the
+        // agent. WebRTC inbound audio isn't automatically routed to the
+        // speakers — it needs an HTMLMediaElement with srcObject set.
         peer.setOnInboundStreamReceived((stream) => {
           set({ agentMediaStream: stream });
+          attachAgentAudioElement(stream);
         });
 
         const rpc = new JSONRPCPeer((msg) => peer.sendMessage(msg));
@@ -267,6 +312,7 @@ export function createAgentRoomStore(
         console.warn('[agentRoomStore] error leaving room', e);
       }
       state.mediaStream?.getTracks().forEach((t) => t.stop());
+      detachAgentAudioElement();
 
       set({
         isConnecting: false,
