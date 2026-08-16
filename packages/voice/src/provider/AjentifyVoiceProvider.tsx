@@ -14,6 +14,8 @@ export interface AjentifyVoiceConfig {
   signalingServerUrl?: string;
   /** Override the agent server HTTP URL (used for `/invite-agent`). */
   agentServerUrl?: string;
+  /** Override the token streaming server WebSocket URL (used for realtime). */
+  tokenStreamingServerUrl?: string;
 }
 
 export interface AjentifyVoiceProviderProps {
@@ -39,6 +41,7 @@ export function AjentifyVoiceProvider({
     return createStores({
       signalingServerUrl: resolvedConfig.signalingServerUrl,
       agentServerUrl: resolvedConfig.agentServerUrl,
+      tokenStreamingServerUrl: resolvedConfig.tokenStreamingServerUrl,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -50,6 +53,11 @@ export function AjentifyVoiceProvider({
         stores.agentRoom.getState().disconnect();
       } catch (e) {
         console.warn('[AjentifyVoiceProvider] disconnect on unmount failed', e);
+      }
+      try {
+        stores.realtime.getState().disconnect();
+      } catch (e) {
+        console.warn('[AjentifyVoiceProvider] realtime disconnect on unmount failed', e);
       }
       try {
         stores.mediaDevices.getState()._teardown();

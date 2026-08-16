@@ -120,32 +120,20 @@ button:disabled {
   border-color: #1f5a36;
 }
 
-.active-detection {
-  font-style: italic;
-  color: #c4cad6;
-  margin: 0 0 8px;
-}
-
-.message-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.message-list li {
-  padding: 4px 8px;
-  border-radius: 6px;
+.transcript-box {
+  padding: 12px 14px;
+  border-radius: 8px;
   background: #11141c;
   font-size: 14px;
+  min-height: 60px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
 }
 
-.message-list li.active {
-  background: #1a3a26;
-  color: #c2ffe0;
-  font-weight: 600;
+.transcript-box .empty {
+  color: #6f7480;
+  font-style: italic;
 }
 
 .tool-log {
@@ -196,59 +184,4 @@ button:disabled {
   font-size: 13px;
   margin: 4px 0 0;
   word-break: break-word;
-}
-
-.pending-tools {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.pending-tool-entry {
-  background: #11141c;
-  border: 1px solid #252a36;
-  border-radius: 10px;
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.pending-tool-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.pending-tool-header strong {
-  font-size: 14px;
-}
-
-.tool-call-id {
-  font-size: 11px;
-  color: #6f7480;
-  word-break: break-all;
-}
-
-.pending-tool-input {
-  margin: 0;
-  font-size: 11px;
-  color: #9aa0ab;
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: #0c0e13;
-  padding: 6px 8px;
-  border-radius: 6px;
-}
-
-textarea {
-  font: inherit;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid #2c3140;
-  background: #0c0e13;
-  color: #e8eaee;
-  resize: vertical;
-  min-height: 48px;
 }

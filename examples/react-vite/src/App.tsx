@@ -8,7 +8,6 @@ import {
   DEFAULT_AGENT_SERVER_URL,
   DEFAULT_SIGNALING_SERVER_URL,
   type ClientSideToolCall,
-  type ClientSideToolResponse,
 } from '@ajentify/voice';
 import { loadEndpointConfig, saveEndpointConfig } from './endpoints';
 
@@ -54,6 +53,8 @@ const CLIENT_SIDE_TOOLS: Record<string, (input: Record<string, any>) => Promise<
   },
 };
 
+const API_BASE = 'https://api.ajentify.com';
+
 export function App() {
   const [contextId, setContextId] = useState(() => localStorage.getItem('aj.contextId') ?? '');
   const [accessToken, setAccessToken] = useState(
@@ -89,6 +90,18 @@ export function App() {
   const currentUserMessageId = useRef<string | null>(null);
   const userMsgCounter = useRef(0);
   const [toolLog, setToolLog] = useState<ToolLogEntry[]>([]);
+
+  // Pending client-side tool responses waiting for manual input.
+  // When the agent sends tool calls that have no registered handler, they
+  // land here so the user can fill in responses and send the full batch.
+  interface PendingToolResponse {
+    tool_call_id: string;
+    tool_name: string;
+    tool_input: Record<string, any> | undefined;
+    response: string;
+    auto: boolean;
+  }
+  const [pendingToolResponses, setPendingToolResponses] = useState<PendingToolResponse[]>([]);
 
   // ---- Try to enumerate devices early so the dropdown shows up before we connect.
   useEffect(() => {
@@ -172,11 +185,14 @@ export function App() {
 
   // ---- Client-side tool round-trip.
   // The agent server fires `on_client_side_tool_calls` as a notification.
-  // We run our handlers and emit `client_side_tool_responses` as a fresh
-  // call — there's no JSON-RPC response on the same id.
+  // Tools with a registered handler are auto-executed; unhandled ones are
+  // queued for manual response. If ANY tool is unhandled, we hold the full
+  // batch so all responses can be sent together.
   const agentRoomStore = useAgentRoomStore();
   useAgentRoomEvent('on_client_side_tool_calls', async ({ tool_calls }) => {
-    const tool_responses: ClientSideToolResponse[] = [];
+    const batch: PendingToolResponse[] = [];
+    let hasUnhandled = false;
+
     for (const call of tool_calls) {
       const callEntry: ToolLogEntry = {
         ts: Date.now(),
@@ -185,31 +201,61 @@ export function App() {
         payload: call.tool_input,
       };
       setToolLog((prev) => [...prev, callEntry].slice(-30));
-      try {
-        const handler = CLIENT_SIDE_TOOLS[call.tool_name];
-        const response = handler
-          ? await handler(call.tool_input ?? {})
-          : JSON.stringify({ error: `No handler for '${call.tool_name}'` });
-        tool_responses.push({ tool_call_id: call.tool_call_id, response });
-        const responseEntry: ToolLogEntry = {
-          ts: Date.now(),
-          kind: 'client_side_tool_response',
+
+      const handler = CLIENT_SIDE_TOOLS[call.tool_name];
+      if (handler) {
+        try {
+          const response = await handler(call.tool_input ?? {});
+          batch.push({
+            tool_call_id: call.tool_call_id,
+            tool_name: call.tool_name,
+            tool_input: call.tool_input,
+            response,
+            auto: true,
+          });
+          const responseEntry: ToolLogEntry = {
+            ts: Date.now(),
+            kind: 'client_side_tool_response',
+            tool_name: call.tool_name,
+            payload: response,
+          };
+          setToolLog((prev) => [...prev, responseEntry].slice(-30));
+        } catch (err) {
+          const response = JSON.stringify({
+            error: err instanceof Error ? err.message : String(err),
+          });
+          batch.push({
+            tool_call_id: call.tool_call_id,
+            tool_name: call.tool_name,
+            tool_input: call.tool_input,
+            response,
+            auto: true,
+          });
+        }
+      } else {
+        hasUnhandled = true;
+        batch.push({
+          tool_call_id: call.tool_call_id,
           tool_name: call.tool_name,
-          payload: response,
-        };
-        setToolLog((prev) => [...prev, responseEntry].slice(-30));
-      } catch (err) {
-        const response = JSON.stringify({
-          error: err instanceof Error ? err.message : String(err),
+          tool_input: call.tool_input,
+          response: '',
+          auto: false,
         });
-        tool_responses.push({ tool_call_id: call.tool_call_id, response });
       }
     }
 
-    try {
-      await agentRoomStore.getState().send('client_side_tool_responses', { tool_responses });
-    } catch (err) {
-      console.error('[example] Failed to send client_side_tool_responses', err);
+    if (hasUnhandled) {
+      setPendingToolResponses(batch);
+    } else {
+      const tool_responses = batch.map(({ tool_call_id, response }) => ({
+        tool_call_id,
+        response,
+      }));
+      try {
+        await agentRoomStore.getState().send('client_side_tool_responses', { tool_responses });
+      } catch (err) {
+        console.error('[example] Failed to send client_side_tool_responses', err);
+      }
     }
   });
 
@@ -262,6 +308,16 @@ export function App() {
         <h1>@ajentify/voice — example</h1>
         <p className="sub">Pure WebRTC transport. All UI state below is built in the example app from raw data-channel events.</p>
       </header>
+
+      <QuickSetup
+        disabled={isConnected || isConnecting}
+        onCreated={(ctxId, token) => {
+          setContextId(ctxId);
+          setAccessToken(token);
+          localStorage.setItem('aj.contextId', ctxId);
+          localStorage.setItem('aj.accessToken', token);
+        }}
+      />
 
       <section className="card">
         <h2>Connection</h2>
@@ -368,9 +424,140 @@ export function App() {
         </p>
       </section>
 
-      <ClientSideToolDemoSender />
+      <PendingToolResponsesPanel
+        pending={pendingToolResponses}
+        onChange={(updated) => setPendingToolResponses(updated)}
+        onSend={async (responses) => {
+          const tool_responses = responses.map(({ tool_call_id, response }) => ({
+            tool_call_id,
+            response,
+          }));
+          for (const r of tool_responses) {
+            const entry: ToolLogEntry = {
+              ts: Date.now(),
+              kind: 'client_side_tool_response',
+              tool_name:
+                pendingToolResponses.find((p) => p.tool_call_id === r.tool_call_id)?.tool_name ??
+                'unknown',
+              payload: r.response,
+            };
+            setToolLog((prev) => [...prev, entry].slice(-30));
+          }
+          try {
+            await agentRoomStore.getState().send('client_side_tool_responses', { tool_responses });
+          } catch (err) {
+            console.error('[example] Failed to send client_side_tool_responses', err);
+          }
+          setPendingToolResponses([]);
+        }}
+      />
       <EndpointsConfig />
     </div>
+  );
+}
+
+/**
+ * Quick-setup panel — enter an org API key and an agent ID, hit
+ * "Create Context" and it will:
+ *   1. POST /context  → gets context_id
+ *   2. POST /generate-api-key (type: client) → gets a short-lived token
+ *   3. Auto-populates the context ID and access token fields.
+ */
+function QuickSetup({
+  disabled,
+  onCreated,
+}: {
+  disabled: boolean;
+  onCreated: (contextId: string, accessToken: string) => void;
+}) {
+  const [orgApiKey, setOrgApiKey] = useState(() => localStorage.getItem('aj.orgApiKey') ?? '');
+  const [agentId, setAgentId] = useState(() => localStorage.getItem('aj.agentId') ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onCreate = useCallback(async () => {
+    if (!orgApiKey.trim() || !agentId.trim()) {
+      setError('Both API key and Agent ID are required.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    localStorage.setItem('aj.orgApiKey', orgApiKey.trim());
+    localStorage.setItem('aj.agentId', agentId.trim());
+
+    try {
+      const ctxRes = await fetch(`${API_BASE}/context`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: orgApiKey.trim(),
+        },
+        body: JSON.stringify({ agent_id: agentId.trim() }),
+      });
+      if (!ctxRes.ok) {
+        const text = await ctxRes.text();
+        throw new Error(`Create context failed (${ctxRes.status}): ${text}`);
+      }
+      const ctxData = await ctxRes.json();
+      const contextId: string = ctxData.context_id;
+
+      const keyRes = await fetch(`${API_BASE}/generate-api-key`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: orgApiKey.trim(),
+        },
+        body: JSON.stringify({ type: 'client' }),
+      });
+      if (!keyRes.ok) {
+        const text = await keyRes.text();
+        throw new Error(`Generate API key failed (${keyRes.status}): ${text}`);
+      }
+      const keyData = await keyRes.json();
+      const token: string = keyData.token;
+
+      onCreated(contextId, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      console.error('[QuickSetup]', err);
+    } finally {
+      setBusy(false);
+    }
+  }, [orgApiKey, agentId, onCreated]);
+
+  return (
+    <section className="card">
+      <h2>Quick setup</h2>
+      <p className="sub">Create a context and generate a client token in one step.</p>
+      <div className="row">
+        <label>
+          Org API key
+          <input
+            value={orgApiKey}
+            onChange={(e) => setOrgApiKey(e.target.value)}
+            placeholder="Your Ajentify org API key"
+            type="password"
+            disabled={disabled || busy}
+          />
+        </label>
+        <label>
+          Agent ID
+          <input
+            value={agentId}
+            onChange={(e) => setAgentId(e.target.value)}
+            placeholder="agent_abc123"
+            disabled={disabled || busy}
+          />
+        </label>
+      </div>
+      <div className="row">
+        <button onClick={onCreate} disabled={disabled || busy}>
+          {busy ? 'Creating…' : 'Create context'}
+        </button>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </section>
   );
 }
 
@@ -419,36 +606,83 @@ function EndpointsConfig() {
   );
 }
 
-/**
- * Optional helper that lets you manually fire a `client_side_tool_responses`
- * message (useful for testing without round-tripping through the agent).
- */
-function ClientSideToolDemoSender() {
+interface PendingToolResponseEntry {
+  tool_call_id: string;
+  tool_name: string;
+  tool_input: Record<string, any> | undefined;
+  response: string;
+  auto: boolean;
+}
+
+function PendingToolResponsesPanel({
+  pending,
+  onChange,
+  onSend,
+}: {
+  pending: PendingToolResponseEntry[];
+  onChange: (updated: PendingToolResponseEntry[]) => void;
+  onSend: (responses: PendingToolResponseEntry[]) => Promise<void>;
+}) {
   const isConnected = useAgentRoom((s) => s.isConnected);
-  const agentRoomStore = useAgentRoomStore();
   const [busy, setBusy] = useState(false);
+  const canSend = isConnected && pending.length > 0 && pending.every((p) => p.response.length > 0);
+
   return (
     <section className="card">
-      <h2>Send raw RPC</h2>
-      <p className="sub">Useful while debugging — emit a synthetic client_side_tool_responses payload.</p>
-      <button
-        disabled={!isConnected || busy}
-        onClick={async () => {
-          setBusy(true);
-          try {
-            const tool_responses: ClientSideToolResponse[] = [
-              { tool_call_id: 'manual-test', response: JSON.stringify({ ok: true, debug: true }) },
-            ];
-            await agentRoomStore.getState().send('client_side_tool_responses', { tool_responses });
-          } catch (err) {
-            console.error(err);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        Emit test client_side_tool_responses
-      </button>
+      <h2>Client side tool responses</h2>
+      <p className="sub">
+        When the agent calls client-side tools with no registered handler, they appear here.
+        Fill in the responses and send them back.
+      </p>
+      {pending.length === 0 ? (
+        <p className="sub" style={{ fontStyle: 'italic' }}>No pending tool calls.</p>
+      ) : (
+        <div className="pending-tools">
+          {pending.map((entry, idx) => (
+            <div key={entry.tool_call_id} className="pending-tool-entry">
+              <div className="pending-tool-header">
+                <strong>{entry.tool_name}</strong>
+                <code className="tool-call-id">{entry.tool_call_id}</code>
+                {entry.auto && <span className="badge on">auto</span>}
+              </div>
+              {entry.tool_input && Object.keys(entry.tool_input).length > 0 && (
+                <pre className="pending-tool-input">
+                  {JSON.stringify(entry.tool_input, null, 2)}
+                </pre>
+              )}
+              <label>
+                Response
+                <textarea
+                  value={entry.response}
+                  onChange={(e) => {
+                    const updated = [...pending];
+                    updated[idx] = { ...entry, response: e.target.value };
+                    onChange(updated);
+                  }}
+                  placeholder="Tool response string…"
+                  rows={2}
+                  disabled={busy}
+                />
+              </label>
+            </div>
+          ))}
+          <div className="row">
+            <button
+              disabled={!canSend || busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await onSend(pending);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? 'Sending…' : `Send ${pending.length} response${pending.length === 1 ? '' : 's'}`}
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

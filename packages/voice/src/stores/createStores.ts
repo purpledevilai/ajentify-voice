@@ -1,10 +1,12 @@
 import { createAgentRoomStore } from './agentRoomStore';
 import { createMediaDevicesStore } from './mediaDevicesStore';
+import { createRealtimeStore } from './realtimeStore';
 import type { AjentifyVoiceStores } from './types';
 
 export interface CreateStoresOptions {
   signalingServerUrl?: string;
   agentServerUrl?: string;
+  tokenStreamingServerUrl?: string;
 }
 
 /**
@@ -19,5 +21,8 @@ export function createStores(options: CreateStoresOptions = {}): AjentifyVoiceSt
     agentServerUrl: options.agentServerUrl,
     mediaDevicesStore: mediaDevices,
   });
-  return { mediaDevices, agentRoom };
+  const realtime = createRealtimeStore({
+    tokenStreamingServerUrl: options.tokenStreamingServerUrl,
+  });
+  return { mediaDevices, agentRoom, realtime };
 }

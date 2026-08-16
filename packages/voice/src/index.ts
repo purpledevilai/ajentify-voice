@@ -15,6 +15,9 @@ export {
   useMediaDevices,
   useMediaDevicesStore,
   useAgentRoomEvent,
+  useRealtimeSession,
+  useRealtimeStore,
+  useRealtimeEvent,
 } from './hooks';
 
 // Stores (advanced users)
