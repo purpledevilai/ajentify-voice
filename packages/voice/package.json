@@ -45,5 +45,12 @@
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/purpledevilai/ajentify-voice",
+    "directory": "packages/voice"
+  },
+  "homepage": "https://github.com/purpledevilai/ajentify-voice/tree/main/packages/voice#readme",
+  "bugs": "https://github.com/purpledevilai/ajentify-voice/issues"
 }
