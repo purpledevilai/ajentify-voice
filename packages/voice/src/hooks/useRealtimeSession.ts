@@ -6,10 +6,16 @@ import type { RealtimeSessionState, RealtimeStore } from '../stores/realtimeStor
 
 /** The raw Zustand store API for `realtime`. */
 export function useRealtimeStore(): RealtimeStore {
-  return useAjentifyVoiceStores().realtime;
+  const store = useAjentifyVoiceStores().realtime;
+  if (!store) {
+    throw new Error(
+      "[@ajentify/voice] realtime store is unavailable. The provider was created in 'agentRoom' mode; pass mode: 'realtime' to use the realtime hooks.",
+    );
+  }
+  return store;
 }
 
 /** Subscribe to a slice of the realtime store with React reactivity. */
 export function useRealtimeSession<T>(selector: (s: RealtimeSessionState) => T): T {
-  return useStore(useAjentifyVoiceStores().realtime, selector);
+  return useStore(useRealtimeStore(), selector);
 }

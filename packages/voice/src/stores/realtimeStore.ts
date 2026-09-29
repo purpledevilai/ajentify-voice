@@ -4,13 +4,25 @@ import type { ClientSideToolCall } from '../types';
 
 export const DEFAULT_TOKEN_STREAMING_SERVER_URL = 'wss://token-streaming-server.prod.token-streaming.ajentify.com';
 
+/** A single completed turn in the realtime conversation. */
+export interface RealtimeMessage {
+  role: 'user' | 'agent';
+  text: string;
+  /** Epoch ms the message was received by the client. */
+  ts: number;
+}
+
 export interface RealtimeSessionState {
   isConnecting: boolean;
   isConnected: boolean;
   isMuted: boolean;
 
-  /** Transcript of what the AI is saying, accumulated from deltas. */
-  transcript: string;
+  /**
+   * Completed conversation turns as they arrive from the server
+   * (user speech transcriptions + agent spoken responses), in order.
+   * Use this to render a live transcript.
+   */
+  messages: RealtimeMessage[];
 
   // Internal handles
   _ws?: WebSocket;
@@ -61,7 +73,10 @@ export interface RealtimeSessionState {
  * Events the TSS sends over the WebSocket for the realtime session.
  */
 export interface RealtimeEvents {
-  on_transcript_delta: { delta: string };
+  /** A completed user speech transcription. */
+  on_user_transcript: { transcript: string };
+  /** A completed agent spoken response transcription. */
+  on_agent_transcript: { transcript: string };
   on_tool_call: { tool_call_id: string; tool_name: string; tool_input: any };
   on_tool_response: { tool_call_id: string; tool_name: string; tool_output: any };
   on_client_side_tool_calls: { tool_calls: ClientSideToolCall[] };
@@ -125,14 +140,14 @@ export function createRealtimeStore(
     isConnecting: false,
     isConnected: false,
     isMuted: false,
-    transcript: '',
+    messages: [],
 
     initialize: async (contextId, accessToken) => {
       if (get().isConnecting || get().isConnected) {
         console.warn('[realtimeStore] Already initialized');
         return;
       }
-      set({ isConnecting: true, isConnected: false, transcript: '' });
+      set({ isConnecting: true, isConnected: false, messages: [] });
 
       try {
         // 1. Open WebSocket to TSS
@@ -148,32 +163,28 @@ export function createRealtimeStore(
           rpc.handleMessage(ev.data as string);
         });
 
-        // Handle transcript accumulation
-        rpc.on('on_transcript_delta', (params: any) => {
-          set((s) => ({ transcript: s.transcript + (params.delta || '') }));
+        // Accumulate completed user/agent transcripts into the messages list.
+        rpc.on('on_user_transcript', (params: any) => {
+          const text = (params?.transcript || '').trim();
+          if (!text) return;
+          set((s) => ({ messages: [...s.messages, { role: 'user', text, ts: Date.now() }] }));
+        });
+        rpc.on('on_agent_transcript', (params: any) => {
+          const text = (params?.transcript || '').trim();
+          if (!text) return;
+          set((s) => ({ messages: [...s.messages, { role: 'agent', text, ts: Date.now() }] }));
         });
 
         set({ _ws: ws, _rpc: rpc });
 
-        // 2. Authenticate and connect to context
-        const connectResult = await rpc.call(
-          'connect_to_realtime_context',
-          { context_id: contextId, access_token: accessToken },
-          true,
-          15000,
-        );
-        if (!connectResult || (connectResult as any).error) {
-          throw new Error((connectResult as any)?.error || 'Failed to connect to realtime context');
-        }
-
-        // 3. Get local microphone
+        // 2. Get local microphone
         const localStream = await navigator.mediaDevices.getUserMedia({
           audio: true,
           video: false,
         });
         set({ _localStream: localStream });
 
-        // 4. Create WebRTC peer connection
+        // 3. Create WebRTC peer connection
         const pc = new RTCPeerConnection({
           iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
         });
@@ -193,7 +204,21 @@ export function createRealtimeStore(
           attachAudioElement(remoteStream);
         };
 
-        // 5. Create SDP offer
+        // Once the media path is actually up, tell TSS we're ready. For
+        // agent-speaks-first agents this is when the server fires the greeting,
+        // so deferring it to here avoids clipping the first words. Fire once.
+        let clientReadySent = false;
+        pc.addEventListener('connectionstatechange', () => {
+          if (pc.connectionState !== 'connected' || clientReadySent) return;
+          clientReadySent = true;
+          rpc
+            .call('realtime_client_ready', {}, false)
+            .catch((err) =>
+              console.warn('[realtimeStore] realtime_client_ready failed:', err),
+            );
+        });
+
+        // 4. Create SDP offer
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
@@ -202,23 +227,25 @@ export function createRealtimeStore(
 
         const finalOffer = pc.localDescription!.sdp;
 
-        // 6. Send SDP offer to TSS (which proxies to OpenAI)
-        const sessionResult = await rpc.call(
-          'start_realtime_session',
-          { sdp_offer: finalOffer },
+        // 5. Authenticate, connect to context, and exchange SDP in a single
+        // call. TSS validates the token, opens the OpenAI session, and returns
+        // the SDP answer.
+        const connectResult: any = await rpc.call(
+          'connect_to_realtime_context',
+          { context_id: contextId, access_token: accessToken, sdp_offer: finalOffer },
           true,
           30000,
         );
-        if (!sessionResult || (sessionResult as any).error) {
-          throw new Error((sessionResult as any)?.error || 'Failed to start realtime session');
+        if (!connectResult || connectResult.error) {
+          throw new Error(connectResult?.error || 'Failed to connect to realtime context');
         }
 
-        const sdpAnswer = (sessionResult as any).sdp_answer;
+        const sdpAnswer = connectResult.sdp_answer;
         if (!sdpAnswer) {
           throw new Error('No SDP answer received from server');
         }
 
-        // 7. Set remote description
+        // 6. Set remote description to complete the WebRTC handshake.
         await pc.setRemoteDescription({ type: 'answer', sdp: sdpAnswer });
 
         set({ isConnecting: false, isConnected: true });
@@ -246,7 +273,7 @@ export function createRealtimeStore(
         isConnecting: false,
         isConnected: false,
         isMuted: false,
-        transcript: '',
+        messages: [],
         _ws: undefined,
         _rpc: undefined,
         _pc: undefined,

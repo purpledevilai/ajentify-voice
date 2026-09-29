@@ -19,8 +19,10 @@ export function useRealtimeEvent<E extends RealtimeEventName>(
   handlerRef.current = handler;
 
   useEffect(() => {
+    const realtime = stores.realtime;
+    if (!realtime) return;
     const stable = (params: RealtimeEvents[E]) => handlerRef.current(params);
-    const off = stores.realtime.getState().on(event, stable);
+    const off = realtime.getState().on(event, stable);
     return off;
   }, [event, stores]);
 }

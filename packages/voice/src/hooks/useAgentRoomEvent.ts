@@ -19,8 +19,10 @@ export function useAgentRoomEvent<E extends AgentDataChannelEventName>(
   handlerRef.current = handler;
 
   useEffect(() => {
+    const agentRoom = stores.agentRoom;
+    if (!agentRoom) return;
     const stable = (params: AgentDataChannelEvents[E]) => handlerRef.current(params);
-    const off = stores.agentRoom.getState().on(event, stable);
+    const off = agentRoom.getState().on(event, stable);
     return off;
   }, [event, stores]);
 }

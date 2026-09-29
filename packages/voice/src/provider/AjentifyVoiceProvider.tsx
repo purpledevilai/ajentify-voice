@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, type ReactNode } from 'react';
-import { createStores } from '../stores/createStores';
+import { createStores, type AjentifyVoiceMode } from '../stores/createStores';
 import type { AjentifyVoiceStores } from '../stores/types';
 import { AjentifyVoiceContext } from './context';
 
@@ -10,6 +10,13 @@ import { AjentifyVoiceContext } from './context';
  * are exposed via the agent-room store's `on(...)` API.
  */
 export interface AjentifyVoiceConfig {
+  /**
+   * Which transport to wire up:
+   * - `agentRoom` (default): signaling + agent-server room flow.
+   * - `realtime`: OpenAI realtime (WebRTC via TokenStreamingServer) only. The
+   *   signaling / agent-server connections are never established.
+   */
+  mode?: AjentifyVoiceMode;
   /** Override the signaling server WebSocket URL. */
   signalingServerUrl?: string;
   /** Override the agent server HTTP URL (used for `/invite-agent`). */
@@ -39,6 +46,7 @@ export function AjentifyVoiceProvider({
 
   const stores: AjentifyVoiceStores = useMemo(() => {
     return createStores({
+      mode: resolvedConfig.mode,
       signalingServerUrl: resolvedConfig.signalingServerUrl,
       agentServerUrl: resolvedConfig.agentServerUrl,
       tokenStreamingServerUrl: resolvedConfig.tokenStreamingServerUrl,
@@ -50,12 +58,12 @@ export function AjentifyVoiceProvider({
   useEffect(() => {
     return () => {
       try {
-        stores.agentRoom.getState().disconnect();
+        stores.agentRoom?.getState().disconnect();
       } catch (e) {
         console.warn('[AjentifyVoiceProvider] disconnect on unmount failed', e);
       }
       try {
-        stores.realtime.getState().disconnect();
+        stores.realtime?.getState().disconnect();
       } catch (e) {
         console.warn('[AjentifyVoiceProvider] realtime disconnect on unmount failed', e);
       }

@@ -10,6 +10,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AjentifyVoiceProvider
       config={{
+        mode: 'realtime',
         tokenStreamingServerUrl: tssUrl,
       }}
     >

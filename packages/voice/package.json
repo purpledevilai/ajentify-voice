@@ -1,6 +1,6 @@
 {
   "name": "@ajentify/voice",
-  "version": "0.2.1",
+  "version": "0.4.0",
   "description": "Thin React + WebRTC transport for talking to an Ajentify agent over a voice room.",
   "license": "MIT",
   "type": "module",
@@ -24,7 +24,8 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "eslint src --ext .ts,.tsx",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "react": ">=18",

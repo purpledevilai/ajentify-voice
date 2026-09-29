@@ -136,6 +136,42 @@ button:disabled {
   font-style: italic;
 }
 
+.transcript-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.transcript-msg {
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.transcript-msg strong {
+  margin-right: 4px;
+}
+
+.transcript-user {
+  background: #16202e;
+}
+
+.transcript-user strong {
+  color: #6fb4ff;
+}
+
+.transcript-agent {
+  background: #1a2016;
+}
+
+.transcript-agent strong {
+  color: #8bd07f;
+}
+
 .tool-log {
   list-style: none;
   padding: 0;

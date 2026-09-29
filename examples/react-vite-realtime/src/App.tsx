@@ -42,7 +42,7 @@ export function App() {
   const isConnecting = useRealtimeSession((s) => s.isConnecting);
   const isConnected = useRealtimeSession((s) => s.isConnected);
   const isMuted = useRealtimeSession((s) => s.isMuted);
-  const transcript = useRealtimeSession((s) => s.transcript);
+  const messages = useRealtimeSession((s) => s.messages);
 
   const initialize = useRealtimeSession((s) => s.initialize);
   const disconnect = useRealtimeSession((s) => s.disconnect);
@@ -54,11 +54,11 @@ export function App() {
 
   // Listen for tool call observability events
   useRealtimeEvent('on_tool_call', ({ tool_name, tool_input }) => {
-    setToolLog((prev) => [...prev, { ts: Date.now(), kind: 'tool_call', tool_name, payload: tool_input }].slice(-30));
+    setToolLog((prev) => [...prev, { ts: Date.now(), kind: 'tool_call' as const, tool_name, payload: tool_input }].slice(-30));
   });
 
   useRealtimeEvent('on_tool_response', ({ tool_name, tool_output }) => {
-    setToolLog((prev) => [...prev, { ts: Date.now(), kind: 'tool_response', tool_name, payload: tool_output }].slice(-30));
+    setToolLog((prev) => [...prev, { ts: Date.now(), kind: 'tool_response' as const, tool_name, payload: tool_output }].slice(-30));
   });
 
   // Handle client-side tool calls
@@ -68,7 +68,7 @@ export function App() {
     for (const call of tool_calls) {
       setToolLog((prev) => [...prev, {
         ts: Date.now(),
-        kind: 'client_side_tool_call',
+        kind: 'client_side_tool_call' as const,
         tool_name: call.tool_name,
         payload: call.tool_input,
       }].slice(-30));
@@ -89,7 +89,7 @@ export function App() {
 
       setToolLog((prev) => [...prev, {
         ts: Date.now(),
-        kind: 'client_side_tool_response',
+        kind: 'client_side_tool_response' as const,
         tool_name: call.tool_name,
         payload: response,
       }].slice(-30));
@@ -187,10 +187,23 @@ export function App() {
       </section>
 
       <section className="card">
-        <h2>Agent transcript</h2>
-        <p className="sub">Accumulated from <code>on_transcript_delta</code> events sent by TSS.</p>
+        <h2>Live transcript</h2>
+        <p className="sub">
+          Completed user and agent turns from <code>on_user_transcript</code> and{' '}
+          <code>on_agent_transcript</code> events sent by TSS.
+        </p>
         <div className="transcript-box">
-          {transcript || <span className="empty">Waiting for agent to speak…</span>}
+          {messages.length === 0 ? (
+            <span className="empty">Waiting for the conversation to start…</span>
+          ) : (
+            <ul className="transcript-list">
+              {messages.map((m, i) => (
+                <li key={`${m.ts}-${i}`} className={`transcript-msg transcript-${m.role}`}>
+                  <strong>{m.role === 'user' ? 'You' : 'Agent'}:</strong> {m.text}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </section>
 
