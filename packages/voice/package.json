@@ -1,7 +1,7 @@
 {
   "name": "@ajentify/voice",
-  "version": "0.4.0",
-  "description": "Thin React + WebRTC transport for talking to an Ajentify agent over a voice room.",
+  "version": "0.5.0",
+  "description": "Thin React + WebRTC transport for realtime voice conversations with an Ajentify agent.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

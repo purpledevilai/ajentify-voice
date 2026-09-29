@@ -12,17 +12,18 @@ import { AjentifyVoiceContext } from './context';
 export interface AjentifyVoiceConfig {
   /**
    * Which transport to wire up:
-   * - `agentRoom` (default): signaling + agent-server room flow.
-   * - `realtime`: OpenAI realtime (WebRTC via TokenStreamingServer) only. The
-   *   signaling / agent-server connections are never established.
+   * - `realtime` (default): OpenAI realtime voice via the Ajentify connect
+   *   server. The signaling / agent-server connections are never established.
+   * - `agentRoom` (legacy): signaling + agent-server room flow. Requires
+   *   self-hosted signaling and agent servers.
    */
   mode?: AjentifyVoiceMode;
-  /** Override the signaling server WebSocket URL. */
-  signalingServerUrl?: string;
-  /** Override the agent server HTTP URL (used for `/invite-agent`). */
-  agentServerUrl?: string;
-  /** Override the token streaming server WebSocket URL (used for realtime). */
+  /** Override the connect server WebSocket URL (realtime mode). Default: `wss://connect.ajentify.com`. */
   tokenStreamingServerUrl?: string;
+  /** Legacy `agentRoom` mode only: override the signaling server WebSocket URL. */
+  signalingServerUrl?: string;
+  /** Legacy `agentRoom` mode only: override the agent server HTTP URL (used for `/invite-agent`). */
+  agentServerUrl?: string;
 }
 
 export interface AjentifyVoiceProviderProps {

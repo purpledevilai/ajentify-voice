@@ -11,6 +11,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AjentifyVoiceProvider
       config={{
+        // Legacy room transport — requires self-hosted signaling + agent servers.
+        mode: 'agentRoom',
         signalingServerUrl: stored.signalingServerUrl,
         agentServerUrl: stored.agentServerUrl,
       }}

@@ -19,5 +19,10 @@ export {
   type CreateRealtimeStoreOptions,
   DEFAULT_TOKEN_STREAMING_SERVER_URL,
 } from './realtimeStore';
-export { createStores, type CreateStoresOptions, type AjentifyVoiceMode } from './createStores';
+export {
+  createStores,
+  DEFAULT_VOICE_MODE,
+  type CreateStoresOptions,
+  type AjentifyVoiceMode,
+} from './createStores';
 export type { AjentifyVoiceStores } from './types';

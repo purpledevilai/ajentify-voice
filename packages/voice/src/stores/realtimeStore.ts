@@ -2,7 +2,8 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { JSONRPCPeer, type JSONRPCHandler } from '../lib/JSONRPCPeer';
 import type { ClientSideToolCall } from '../types';
 
-export const DEFAULT_TOKEN_STREAMING_SERVER_URL = 'wss://token-streaming-server.prod.token-streaming.ajentify.com';
+/** Ajentify connect server (the SDK appends `/ws-realtime`). */
+export const DEFAULT_TOKEN_STREAMING_SERVER_URL = 'wss://connect.ajentify.com';
 
 /** A single completed turn in the realtime conversation. */
 export interface RealtimeMessage {

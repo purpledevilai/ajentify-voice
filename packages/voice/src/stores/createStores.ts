@@ -5,13 +5,17 @@ import type { AjentifyVoiceStores } from './types';
 
 /**
  * Which transport(s) to wire up for a provider instance:
- * - `agentRoom` (default): the multi-peer signaling + agent-server room flow.
- * - `realtime`: the OpenAI realtime (WebRTC via TokenStreamingServer) flow only.
+ * - `realtime` (default): OpenAI realtime voice — WebRTC negotiated through
+ *   the Ajentify connect server.
+ * - `agentRoom` (legacy): the multi-peer signaling + agent-server room flow.
+ *   Requires self-hosted signaling and agent servers; opt in explicitly.
  *
- * In `realtime` mode the agent-room store is not created, so the signaling /
- * agent server connections are never established.
+ * Only the store for the selected mode is created, so the other transport's
+ * connections are never established.
  */
 export type AjentifyVoiceMode = 'agentRoom' | 'realtime';
+
+export const DEFAULT_VOICE_MODE: AjentifyVoiceMode = 'realtime';
 
 export interface CreateStoresOptions {
   mode?: AjentifyVoiceMode;
@@ -25,11 +29,11 @@ export interface CreateStoresOptions {
  * media-devices store via direct reference so that initialize() can drive
  * permission + enumeration.
  *
- * The set of stores created depends on `mode`: `realtime` skips the
- * agent-room store entirely.
+ * The set of stores created depends on `mode`: `realtime` (default) skips
+ * the agent-room store entirely; `agentRoom` skips the realtime store.
  */
 export function createStores(options: CreateStoresOptions = {}): AjentifyVoiceStores {
-  const mode: AjentifyVoiceMode = options.mode ?? 'agentRoom';
+  const mode: AjentifyVoiceMode = options.mode ?? DEFAULT_VOICE_MODE;
   const mediaDevices = createMediaDevicesStore();
 
   if (mode === 'realtime') {

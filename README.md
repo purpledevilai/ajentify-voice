@@ -1,6 +1,6 @@
 # Ajentify Voice
 
-Monorepo for [`@ajentify/voice`](packages/voice) — a thin React + WebRTC transport for talking to an Ajentify agent over a voice room.
+Monorepo for [`@ajentify/voice`](packages/voice) — a thin React + WebRTC transport for realtime voice conversations with an Ajentify agent.
 
 The package owns the signaling WebSocket, the WebRTC peer connection, the microphone media stream, and the JSON-RPC data channel. It does **not** store derived chat state (AI sentences, transcribed user speech, etc.). Consumers subscribe to raw data-channel events and shape their own state.
 

@@ -9,7 +9,7 @@ export function useRealtimeStore(): RealtimeStore {
   const store = useAjentifyVoiceStores().realtime;
   if (!store) {
     throw new Error(
-      "[@ajentify/voice] realtime store is unavailable. The provider was created in 'agentRoom' mode; pass mode: 'realtime' to use the realtime hooks.",
+      "[@ajentify/voice] realtime store is unavailable. The provider was created in legacy 'agentRoom' mode; remove `mode` (or pass mode: 'realtime') to use the realtime hooks.",
     );
   }
   return store;
