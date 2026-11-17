@@ -103,6 +103,41 @@ useRealtimeEvent('on_client_side_tool_calls', async ({ tool_calls }) => {
 });
 ```
 
+### Editing text with `applyEdits`
+
+Agents edit text with the platform-wide **`edits`** contract — an ordered, all-or-nothing list of anchored operations (`replace` / `insert_before` / `insert_after` / `delete`) whose `target` / `anchor` must occur exactly once. The package ships the same algorithm the API uses server-side, so a client-side tool can take an `edits` parameter (declare it with `EDITS_SCHEMA` in the dashboard tool editor, or pick the "edits" type) and apply it to text the page owns — e.g. a voice agent dictating changes to a document:
+
+```ts
+import { applyEdits, TextEditError, type EditOperation } from '@ajentify/voice';
+
+const myTools: Record<string, (input: Record<string, unknown>) => unknown> = {
+  edit_document: ({ edits }) => {
+    try {
+      const { text, summary } = applyEdits(editor.getText(), edits as EditOperation[]);
+      editor.setText(text);
+      return `Applied edits: ${JSON.stringify(summary)}`;
+    } catch (err) {
+      // target_not_found / ambiguous_target / invalid_edit / empty_edits — return the message
+      // so the agent can retry with a more specific target instead of failing the turn.
+      if (err instanceof TextEditError) return `Edit failed (${err.code}): ${err.message}`;
+      throw err;
+    }
+  },
+};
+
+useRealtimeEvent('on_client_side_tool_calls', async ({ tool_calls }) => {
+  const tool_responses = await Promise.all(
+    tool_calls.map(async (c) => ({
+      tool_call_id: c.tool_call_id,
+      response: await myTools[c.tool_name]!(c.tool_input),
+    })),
+  );
+  await realtime.getState().send('client_side_tool_responses', { tool_responses }, true);
+});
+```
+
+`applyEdits(text, edits)` returns `{ text, summary }` (`summary` = `{ replaced, inserted_before, inserted_after, deleted }`) and never mutates its input; `TextEditError.details` carries `edit_index`, `match_count` and up to three `contexts` around an ambiguous match.
+
 ## Public API
 
 - `AjentifyVoiceProvider`, `AjentifyVoiceContext`
@@ -111,6 +146,7 @@ useRealtimeEvent('on_client_side_tool_calls', async ({ tool_calls }) => {
 - `useMediaDevices(selector)`, `useMediaDevicesStore()`
 - `monitorMicStream`, `monitorInboundMediaStream` — Web Audio helpers for level animation
 - `RealtimeEvents`, `RealtimeEventName`, `RealtimeMessage`, `ClientSideToolCall`, `ClientSideToolResponse`
+- `applyEdits`, `TextEditError`, `EDITS_SCHEMA`, `EDITS_FIELD_DESCRIPTION`, `EDIT_OPERATIONS`; types `EditOperation`, `EditSummary`
 - `DEFAULT_TOKEN_STREAMING_SERVER_URL`, `DEFAULT_VOICE_MODE`
 
 ## Legacy: room transport (`mode: 'agentRoom'`)
